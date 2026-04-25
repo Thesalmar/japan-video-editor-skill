@@ -27,6 +27,26 @@ ffmpeg -i raw/INPUT.MOV \
 - `faststart` = web-optimised (playback starts before full download)
 - Keep originals; output alongside them in `raw/`
 
+## Step 1.5 — Silence auto-cut
+
+Run on every converted clip before transcription:
+
+```bash
+for f in raw/*.mp4; do
+  python scripts/silence_cut.py "$f" \
+    "segments/$(basename "${f%.mp4}")_cut.mp4"
+done
+```
+
+Optional: write a cut log for debugging (useful if Whisper timestamps drift):
+
+```bash
+python scripts/silence_cut.py raw/take1.mp4 segments/take1_cut.mp4 \
+  --log segments/take1_cuts.json
+```
+
+Tuning flags: `--threshold` (dB floor), `--min-silence` (seconds), `--pad` (seconds of headroom). See `references/silence-cut.md` for per-environment values.
+
 ## Step 2 — Transcribe with Whisper
 
 ```python
@@ -35,7 +55,8 @@ import whisper, json
 from pathlib import Path
 
 model = whisper.load_model("small")
-clips = sorted(Path("raw").glob("*.mp4"))
+# Transcribe silence-cut segments, not raw clips
+clips = sorted(Path("segments").glob("*_cut.mp4"))
 
 all_segments = []
 offset = 0.0
@@ -107,7 +128,8 @@ delegate_task(
     - Output resolution: 1080x1920 (9:16 vertical)
     - FPS: 30
     - Playback speed: 1.3x (applied to segments only, not BGM/SFX)
-    - Captions: ≤15 Japanese chars per caption
+    - Captions: use text_jp (≤15 Japanese chars) + text_en (≤8 words, meaning not literal)
+    - Tag first segment style: "hook", last segment style: "cta", labels style: "label" (omit text_en)
     - Highlight ~35% of captions (numbers, section headers, key action phrases)
     - Include 2–3 broll_slots at topic transitions
     - Map SFX to highlighted captions (see sfx/ folder for available files)
@@ -131,11 +153,12 @@ delegate_task(
     Write src/VideoEdit.tsx using the Remotion template.
     
     REQUIRED customisations:
-    1. ENGLISH map: translate every caption.text to English (keyed by caption id)
+    1. Import DualSubtitle from './components/DualSubtitle' (replaces Subtitle)
     2. CAPTION_SFX: map each highlighted caption id to an sfx filename
     3. BROLL_SLOTS: array from edit_plan.broll_slots with startSeconds and src
     4. CAPTION_SFX_VOLUME: override vol 0.28 for 呪いの旋律.mp3
     5. QR code src: set to staticFile("qr.png") if qr.png exists in public/
+    Note: text_en in edit_plan.json drives EN subtitles — no separate ENGLISH map needed
     
     Template is at references/remotion-template.md
     """,

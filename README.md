@@ -26,7 +26,8 @@ Hermes activates this skill when you say:
 | Step | What happens |
 |------|-------------|
 | 1 | Convert source clips to h264/mp4 with ffmpeg |
-| 2 | Transcribe with Whisper (Japanese, word timestamps) |
+| 1.5 | Silence auto-cut on raw clips → `segments/<basename>_cut.mp4` |
+| 2 | Transcribe `segments/*_cut.mp4` with Whisper (Japanese, word timestamps) |
 | 3 | Quality-check transcript (filler words, kanji misreads) |
 | 4 | Generate `edit_plan.json` (segments, captions, SFX, B-roll) |
 | 5 | Generate `src/VideoEdit.tsx` (Remotion composition) |
@@ -78,5 +79,9 @@ Hermes picks up the skill automatically on next launch — no config change need
 | `references/pipeline-steps.md` | Full commands for all 10 steps |
 | `references/remotion-template.md` | Generic `VideoEdit.tsx` template |
 | `references/edit-plan-schema.md` | `edit_plan.json` field reference |
-| `references/quality-checks.md` | 7 quality checks with pass/fail criteria |
+| `references/dual-subtitle-schema.md` | Bilingual JP/EN subtitle schema (v2) |
+| `references/quality-checks.md` | 9 quality checks with pass/fail criteria |
+| `references/silence-cut.md` | Step 1.5 silence auto-cut usage and tuning |
 | `references/sfx-library.md` | 25 SFX files with recommended use cases |
+| `scripts/silence_cut.py` | Silence auto-cut preprocessor |
+| `src/components/DualSubtitle.tsx` | Remotion bilingual subtitle component |

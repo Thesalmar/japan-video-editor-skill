@@ -83,6 +83,30 @@ ffprobe -v quiet -show_entries format=duration \
 
 **Fix:** Trim the longest `keep_segment` entries in `edit_plan.json`, re-cut that segment, and re-render.
 
+## Check 8 — Silence-cut sanity
+
+**Pass:** Cut output duration is 60%–90% of source duration  
+**Fail:** < 60% (too aggressive, likely clipping speech) or > 90% (threshold too lax)
+
+```bash
+# Compare durations of raw and cut clips
+ffprobe -v quiet -show_entries format=duration \
+  -of default=noprint_wrappers=1:nokey=1 raw/INPUT.mp4
+ffprobe -v quiet -show_entries format=duration \
+  -of default=noprint_wrappers=1:nokey=1 segments/INPUT_cut.mp4
+```
+
+**Fix:** Re-run `scripts/silence_cut.py` with adjusted `--threshold` (higher = less aggressive). See `references/silence-cut.md`.
+
+## Check 9 — Subtitle size hierarchy
+
+**Pass:** JP subtitle font-size ≥ 1.4× EN subtitle font-size at every frame where both are visible  
+**Fail:** EN rendered at equal or larger size than JP
+
+**How to check:** In Remotion Studio, pause on any frame with bilingual subtitles. JP must visually dominate.
+
+**Fix:** Verify the `style` field in `edit_plan.json` segments. `label` segments must omit `text_en`. Check `DualSubtitle.tsx` STYLE_PRESETS — default ratio is 64:44 = 1.45×.
+
 ## Verification Summary Table
 
 | # | Check | Tool | Pass Criterion |
@@ -94,3 +118,5 @@ ffprobe -v quiet -show_entries format=duration \
 | 5 | Audio levels | ffmpeg loudnorm | BGM −18 to −12 LUFS |
 | 6 | Caption position | Remotion Studio | Bottom 18%, no face overlap |
 | 7 | Duration | ffprobe | ≤ 90.0 seconds |
+| 8 | Silence-cut ratio | ffprobe | 60%–90% of source duration |
+| 9 | Subtitle hierarchy | Remotion Studio | JP size ≥ 1.4× EN size |

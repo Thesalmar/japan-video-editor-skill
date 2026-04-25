@@ -1,7 +1,7 @@
 ---
 name: japan-video-editor
 description: Use when the user says "edit this video", "edit video", "process video", "make a short", "create a reel", or drops a video file. Produces a fully-edited Japanese-language vertical short (1080×1920) from raw iPhone clips using Whisper, Remotion, and a 10-step automated pipeline. Also triggers on "run the pipeline", "start from scratch", or "new video project".
-version: 1.0.0
+version: 1.1.0
 author: Come Lemargue
 license: MIT
 dependencies: [ffmpeg, python3, nodejs>=18, whisper]
@@ -40,8 +40,12 @@ Every project follows this layout:
 │   ├── bgm/      → ../bgm/
 │   └── broll/    → ../broll/
 ├── src/
-│   ├── index.ts         ← Remotion entry point
-│   └── VideoEdit.tsx    ← main composition (auto-generated/updated)
+│   ├── index.ts              ← Remotion entry point
+│   ├── VideoEdit.tsx         ← main composition (auto-generated/updated)
+│   └── components/
+│       └── DualSubtitle.tsx  ← bilingual JP/EN subtitle component
+├── scripts/
+│   └── silence_cut.py        ← Step 1.5 silence auto-cut preprocessor
 ├── edit_plan.json       ← structured edit plan (auto-generated)
 ├── transcript.json      ← Whisper output (auto-generated)
 ├── package.json
@@ -59,16 +63,29 @@ Run steps in order. Each step's output is the next step's input.
 ffmpeg -i raw/INPUT.MOV -c:v libx264 -crf 18 -preset fast -c:a aac raw/INPUT.mp4
 ```
 
-All clips must be in `raw/` as `.mp4` before Step 2.
+All clips must be in `raw/` as `.mp4` before Step 1.5.
+
+### Step 1.5 — Silence auto-cut
+
+```bash
+# Run on every raw clip; output lands in segments/
+for f in raw/*.mp4; do
+  python scripts/silence_cut.py "$f" "segments/$(basename "${f%.mp4}")_cut.mp4"
+done
+```
+
+Default settings (threshold −30 dB, min silence 0.4 s, pad 0.08 s) work for ~80% of clips. See `references/silence-cut.md` for per-environment tuning.
+
+Output: `segments/<basename>_cut.mp4` — one silence-trimmed file per raw clip.
 
 ### Step 2 — Transcribe with Whisper
 
 ```python
 import whisper, json
 model = whisper.load_model("small")
-# Transcribe each clip individually; collect all segments
+# Transcribe the silence-cut segments (not the raw clips)
 all_segments = []
-for clip in sorted(Path("raw").glob("*.mp4")):
+for clip in sorted(Path("segments").glob("*_cut.mp4")):
     result = model.transcribe(str(clip), language="ja", word_timestamps=True)
     all_segments.extend(result["segments"])
 Path("transcript.json").write_text(json.dumps(all_segments, ensure_ascii=False, indent=2))
@@ -99,7 +116,8 @@ Rules for the planner:
 - Target 60–120s total duration (never over 90s for Reels)
 - Speed: 1.3× (keep_segments only — BGM and SFX play at 1×)
 - Resolution: 1080×1920 (9:16 vertical)
-- Captions: ≤15 Japanese characters per caption
+- Captions: use `text_jp` (≤15 Japanese chars) + `text_en` (≤8 words, concise translation)
+- Tag first segment `style: "hook"`, last segment `style: "cta"`, on-screen labels `style: "label"`
 - Highlight 30–40% of captions (key nouns, numbers, action phrases)
 - Insert B-roll at topic transitions (use `broll_slots`)
 - Map SFX to highlighted captions (see `references/sfx-library.md`)
@@ -114,10 +132,11 @@ Use `edit_plan.json` to write `src/VideoEdit.tsx`.
 See `references/remotion-template.md` for the full template.
 
 Key customisations per project:
-- `ENGLISH` map: caption id → English translation (fill in every caption)
+- Import `DualSubtitle` from `./components/DualSubtitle` (replaces old `Subtitle`)
 - `CAPTION_SFX`: caption id → sfx filename (from edit_plan)
 - `BROLL_SLOTS`: array from edit_plan broll_slots
 - `CAPTION_SFX_VOLUME`: per-caption volume overrides (default 0.6)
+- `text_en` in `edit_plan.json` drives EN subtitles automatically — no separate `ENGLISH` map needed
 
 ### Step 6 — Wire public/ symlinks
 
@@ -214,3 +233,9 @@ Import `output/final_v1.mp4` into CapCut Desktop for:
 **Audio pops at segment boundaries** → add `-af "afade=t=in:d=0.05,afade=t=out:d=0.05"` to ffmpeg in Step 6.
 
 **Caption overflows 15 chars** → split into two captions in edit_plan.json and adjust start/end times.
+
+**Silence-cut clips speech** → increase `--pad` (try 0.12–0.15) in `scripts/silence_cut.py`.
+
+**Video still feels slow after silence cut** → lower `--min-silence` to 0.3 or raise `--threshold` to −25 for noisy environments.
+
+**EN subtitle renders too large** → check the `style` field in `edit_plan.json`; `label` segments must omit `text_en`.
